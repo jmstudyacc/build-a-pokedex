@@ -33,16 +33,20 @@ func TestCleanInput(t *testing.T) {
 
 	for _, c := range cases {
 		actual := cleanInput(c.input)
-		// check the length of the slice against the expected slice
+		// check the length of the string slice against the expected string slice
 		// if they don't match use t.Errorf to print an error message
 		// and fail the test
 		if len(actual) != len(c.expected) {
 			t.Errorf("ERROR: Lengths not equal [%d] [%d]", len(actual), len(c.expected))
 		}
 		for i := range actual {
+			// when iterating over the inner words in each case
+			// check the result of running cleanInput against the input case against the expected test result
+			// use i for this
 			word := actual[i]
 			expectedWord := c.expected[i]
 			if word != expectedWord {
+				// report error if the words do not match
 				t.Errorf("Words do not match: [%v] [%v]", word, expectedWord)
 			}
 		}
