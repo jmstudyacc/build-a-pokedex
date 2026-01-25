@@ -26,6 +26,14 @@ func init() {
 			name:        "exit",
 			description: "Exit the Pokedex",
 			callback:    commandExit,
+		}, "map": {
+			name:        "map",
+			description: "Displays the next 20 locations",
+			callback:    mapForward,
+		}, "mapb": {
+			name:        "mapb",
+			description: "Displays the previous 20 locations",
+			callback:    mapBack,
 		},
 	}
 }
@@ -94,5 +102,13 @@ func commandHelp() error {
 		fmt.Printf("%s: %s\n", command.name, command.description)
 	}
 
+	return nil
+}
+
+func mapForward() error {
+	return nil
+}
+
+func mapBack() error {
 	return nil
 }
