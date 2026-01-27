@@ -13,6 +13,11 @@ type cliCommand struct {
 	callback    func() error // callback is a function that returns an error
 }
 
+type Config struct {
+	nextURL     string
+	previousURL string
+}
+
 var commandMap map[string]cliCommand
 
 // to avoid circular dependencies, init() used to assign the map before main runs
@@ -105,10 +110,10 @@ func commandHelp() error {
 	return nil
 }
 
-func mapForward() error {
+func mapForward(c *Config) error {
 	return nil
 }
 
-func mapBack() error {
+func mapBack(c *Config) error {
 	return nil
 }
