@@ -2,22 +2,41 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"strings"
 )
 
+// constant created to store the Poke API Locations URL
+const pokeAPILocations = "https://pokeapi.co/api/v2/location-area"
+
 type cliCommand struct {
 	name        string
 	description string
-	callback    func() error // callback is a function that returns an error
+	callback    func(c *locationArea) error // callback is a function that returns an error
 }
 
-type Config struct {
-	nextURL     string
-	previousURL string
+// Struct created to STORE data FROM the PokeAPI
+type pokeAPI struct {
+	// NOTE: to export JSON fields you need to capitalise the Fields
+	Next     string     `json:"next"`
+	Previous string     `json:"previous"`
+	Results  []struct { // anonymous Struct to store the names of the locations on the map
+		Name string `json:"name"`
+		URL  string `json:"url"`
+	} `json:"results"`
 }
 
+// internal Struct to store the next & previous values from the PokeAPI (Next & Previous respectively)
+type locationArea struct {
+	next     string
+	previous string
+}
+
+// Hashmap to store the commands
 var commandMap map[string]cliCommand
 
 // to avoid circular dependencies, init() used to assign the map before main runs
@@ -44,6 +63,8 @@ func init() {
 }
 
 func startRepl() {
+	// generate internal struct to store next & previous location data
+	la := &locationArea{}
 	// create a scanner to read from os.Stdin
 	scanner := bufio.NewScanner(os.Stdin) // calling this will block & wait for user input and CR
 	for {
@@ -64,7 +85,7 @@ func startRepl() {
 		// if the user input is a command word and exists in the map
 		if exist {
 			// storing the return from command.callback()
-			err := command.callback()
+			err := command.callback(la)
 			// if command.callback() does not return nil an error has occurred
 			if err != nil {
 				fmt.Println("Unknown Command")
@@ -88,7 +109,7 @@ func cleanInput(text string) []string {
 }
 
 // function to exit out of the pokedex
-func commandExit() error {
+func commandExit(c *locationArea) error {
 	fmt.Println("Closing the Pokedex... Goodbye!")
 	// send a successful exit code back to the function
 	os.Exit(0)
@@ -96,7 +117,7 @@ func commandExit() error {
 }
 
 // function to display the available commands - error return value
-func commandHelp() error {
+func commandHelp(c *locationArea) error {
 	fmt.Println("Welcome to the Pokedex!")
 	fmt.Println("Usage:")
 	fmt.Println()
@@ -110,10 +131,78 @@ func commandHelp() error {
 	return nil
 }
 
-func mapForward(c *Config) error {
+func mapForward(c *locationArea) error {
+	// set local value for url to constant for PokeAPI
+	url := pokeAPILocations
+	if c.next != "" {
+		url = c.next // call to PokeAPI has occurred, value will be present in internal struct for next map locations
+	}
+	// begin HTTP request
+	res, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("error accessing PokeAPI for Locations list: %w", err)
+	}
+	defer res.Body.Close()
+
+	// creating the struct to store the PokeAPI data
+	var resp pokeAPI
+
+	// get the datastream from the body of the response
+	data, err := io.ReadAll(res.Body)
+	if err != nil {
+		return fmt.Errorf("ERROR: %w", err)
+	}
+
+	// if there aren't any errors, unmarshal the response from data into resp (pokeAPI struct)
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	// range over the Results[] in resp (pokeAPI)
+	for _, item := range resp.Results {
+		fmt.Println(item.Name)
+	}
+	// now API call is made, we can set the internal struct 'next' & 'previous' fields to match the response stored in PokeAPI
+	c.next = resp.Next
+	c.previous = resp.Previous
+
 	return nil
 }
 
-func mapBack(c *Config) error {
+func mapBack(c *locationArea) error {
+	url := pokeAPILocations // as above
+
+	// if c.previous is empty - print a message and return
+	if c.previous == "" {
+		fmt.Println("you're on the first page")
+		return nil
+	}
+
+	// as above
+	res, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("error accessing PokeAPI URL for Locations list: %w", err)
+	}
+	defer res.Body.Close()
+
+	// as above
+	var resp pokeAPI
+
+	// as above
+	data, err := io.ReadAll(res.Body)
+	if err != nil {
+		return fmt.Errorf("ERROR: %w", err)
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	// as above
+	for _, item := range resp.Results {
+		fmt.Println(item.Name)
+	}
+	c.previous = resp.Previous
+	c.next = resp.Next
+
 	return nil
 }
