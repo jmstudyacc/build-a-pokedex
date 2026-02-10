@@ -17,9 +17,15 @@ type cacheEntry struct {
 
 // returns a new cache
 func NewCache(interval time.Duration) *Cache {
-	return &Cache{
+	cache := &Cache{
 		entries: make(map[string]cacheEntry),
 	}
+
+	// kick off a thread to reap the entries
+	go cache.reapLoop(interval)
+
+	// returns immediately while loop runs
+	return cache
 }
 
 func (c *Cache) Add(key string, val []byte) {
@@ -45,4 +51,24 @@ func (c *Cache) Get(key string) (b []byte, found bool) {
 	return data.val, true
 }
 
-func (c *Cache) reapLoop() {}
+func (c *Cache) reapLoop(interval time.Duration) {
+	// Infinite loop that:
+	// 1. Waits for interval Duration
+	// 2. Checks all entries
+	// 3. Deletes entries older than interval
+	// 4. Repeats forever
+	for {
+		// sleep until interval passes
+		time.Sleep(interval)
+
+		c.mut.Lock()
+
+		// check entries
+		for key, val := range c.entries {
+			if time.Since(val.createdAt) > interval {
+				delete(c.entries, key)
+			}
+		}
+		c.mut.Unlock()
+	}
+}
