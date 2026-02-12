@@ -8,6 +8,9 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
+
+	"pokedexcli/internal/pokecache"
 )
 
 // constant created to store the Poke API Locations URL
@@ -16,7 +19,7 @@ const pokeAPILocations = "https://pokeapi.co/api/v2/location-area"
 type cliCommand struct {
 	name        string
 	description string
-	callback    func(c *locationArea) error // callback is a function that returns an error
+	callback    func(*locationArea, *pokecache.Cache) error // callback is a function that returns an error
 }
 
 // Struct created to STORE data FROM the PokeAPI
@@ -65,6 +68,10 @@ func init() {
 func startRepl() {
 	// generate internal struct to store next & previous location data
 	la := &locationArea{}
+
+	// instantiate the cache
+	cache := pokecache.NewCache(5 * time.Minute)
+
 	// create a scanner to read from os.Stdin
 	scanner := bufio.NewScanner(os.Stdin) // calling this will block & wait for user input and CR
 	for {
@@ -85,7 +92,7 @@ func startRepl() {
 		// if the user input is a command word and exists in the map
 		if exist {
 			// storing the return from command.callback()
-			err := command.callback(la)
+			err := command.callback(la, cache)
 			// if command.callback() does not return nil an error has occurred
 			if err != nil {
 				fmt.Println("Unknown Command")
@@ -109,7 +116,7 @@ func cleanInput(text string) []string {
 }
 
 // function to exit out of the pokedex
-func commandExit(c *locationArea) error {
+func commandExit(la *locationArea, c *pokecache.Cache) error {
 	fmt.Println("Closing the Pokedex... Goodbye!")
 	// send a successful exit code back to the function
 	os.Exit(0)
@@ -117,7 +124,7 @@ func commandExit(c *locationArea) error {
 }
 
 // function to display the available commands - error return value
-func commandHelp(c *locationArea) error {
+func commandHelp(la *locationArea, c *pokecache.Cache) error {
 	fmt.Println("Welcome to the Pokedex!")
 	fmt.Println("Usage:")
 	fmt.Println()
@@ -131,12 +138,34 @@ func commandHelp(c *locationArea) error {
 	return nil
 }
 
-func mapForward(c *locationArea) error {
+func mapForward(la *locationArea, c *pokecache.Cache) error {
 	// set local value for url to constant for PokeAPI
 	url := pokeAPILocations
-	if c.next != "" {
-		url = c.next // call to PokeAPI has occurred, value will be present in internal struct for next map locations
+
+	// creating the struct to store the PokeAPI data
+	var resp pokeAPI
+	if la.next != "" {
+		url = la.next // call to PokeAPI has occurred, value will be present in internal struct for next map locations
 	}
+	// cache check against the URL
+	cacheData, ok := c.Get(url)
+	if ok {
+		// data is cached
+		if err := json.Unmarshal(cacheData, &resp); err != nil {
+			fmt.Errorf("%w", err)
+		}
+
+		// range over the Results[] in resp (pokeAPI)
+		for _, item := range resp.Results {
+			fmt.Println(item.Name)
+		}
+		// now API call is made, we can set the internal struct 'next' & 'previous' fields to match the response stored in PokeAPI
+		la.next = resp.Next
+		la.previous = resp.Previous
+
+		return nil
+	}
+
 	// begin HTTP request
 	res, err := http.Get(url)
 	if err != nil {
@@ -144,14 +173,13 @@ func mapForward(c *locationArea) error {
 	}
 	defer res.Body.Close()
 
-	// creating the struct to store the PokeAPI data
-	var resp pokeAPI
-
 	// get the datastream from the body of the response
 	data, err := io.ReadAll(res.Body)
 	if err != nil {
 		return fmt.Errorf("ERROR: %w", err)
 	}
+
+	c.Add(url, data)
 
 	// if there aren't any errors, unmarshal the response from data into resp (pokeAPI struct)
 	if err := json.Unmarshal(data, &resp); err != nil {
@@ -163,17 +191,17 @@ func mapForward(c *locationArea) error {
 		fmt.Println(item.Name)
 	}
 	// now API call is made, we can set the internal struct 'next' & 'previous' fields to match the response stored in PokeAPI
-	c.next = resp.Next
-	c.previous = resp.Previous
+	la.next = resp.Next
+	la.previous = resp.Previous
 
 	return nil
 }
 
-func mapBack(c *locationArea) error {
+func mapBack(la *locationArea, c *pokecache.Cache) error {
 	url := pokeAPILocations // as above
 
 	// if c.previous is empty - print a message and return
-	if c.previous == "" {
+	if la.previous == "" {
 		fmt.Println("you're on the first page")
 		return nil
 	}
@@ -201,8 +229,8 @@ func mapBack(c *locationArea) error {
 	for _, item := range resp.Results {
 		fmt.Println(item.Name)
 	}
-	c.previous = resp.Previous
-	c.next = resp.Next
+	la.previous = resp.Previous
+	la.next = resp.Next
 
 	return nil
 }

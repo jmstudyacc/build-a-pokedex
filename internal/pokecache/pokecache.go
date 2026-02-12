@@ -21,7 +21,7 @@ func NewCache(interval time.Duration) *Cache {
 		entries: make(map[string]cacheEntry),
 	}
 
-	// kick off a thread to reap the entries
+	// kick off a Go thread to reap entries older than interval
 	go cache.reapLoop(interval)
 
 	// returns immediately while loop runs
