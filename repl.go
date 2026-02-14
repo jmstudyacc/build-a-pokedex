@@ -206,6 +206,28 @@ func mapBack(la *locationArea, c *pokecache.Cache) error {
 		return nil
 	}
 
+	// genreate struc that will hold the data for the maps
+	var resp pokeAPI
+
+	if la.previous != "" {
+		url = la.previous // call to PokeAPI has occurred, value will be present in internal struct for next map locations
+	}
+
+	// check cache
+	cacheData, ok := c.Get(url)
+	if ok {
+		if err := json.Unmarshal(cacheData, &resp); err != nil {
+			fmt.Errorf("%w", err)
+		}
+		// range over the Results[] in resp (pokeAPI)
+		for _, item := range resp.Results {
+			fmt.Println(item.Name)
+		}
+
+		la.next = resp.Next
+		la.previous = resp.Previous
+		return nil
+	}
 	// as above
 	res, err := http.Get(url)
 	if err != nil {
@@ -214,13 +236,13 @@ func mapBack(la *locationArea, c *pokecache.Cache) error {
 	defer res.Body.Close()
 
 	// as above
-	var resp pokeAPI
-
-	// as above
 	data, err := io.ReadAll(res.Body)
 	if err != nil {
 		return fmt.Errorf("ERROR: %w", err)
 	}
+
+	c.Add(url, data)
+
 	if err := json.Unmarshal(data, &resp); err != nil {
 		return fmt.Errorf("%w", err)
 	}
