@@ -142,54 +142,22 @@ func mapForward(la *locationArea, c *pokecache.Cache) error {
 	// set local value for url to constant for PokeAPI
 	url := pokeAPILocations
 
-	// creating the struct to store the PokeAPI data
-	var resp pokeAPI
 	if la.next != "" {
 		url = la.next // call to PokeAPI has occurred, value will be present in internal struct for next map locations
 	}
-	// cache check against the URL
-	cacheData, ok := c.Get(url)
-	if ok {
-		// data is cached
-		if err := json.Unmarshal(cacheData, &resp); err != nil {
-			fmt.Errorf("%w", err)
-		}
-
-		// range over the Results[] in resp (pokeAPI)
-		for _, item := range resp.Results {
-			fmt.Println(item.Name)
-		}
-		// now API call is made, we can set the internal struct 'next' & 'previous' fields to match the response stored in PokeAPI
-		la.next = resp.Next
-		la.previous = resp.Previous
-
-		return nil
-	}
-
 	// begin HTTP request
-	res, err := http.Get(url)
+	resp, err := fetchLocationData(url, c)
 	if err != nil {
 		return fmt.Errorf("error accessing PokeAPI for Locations list: %w", err)
 	}
-	defer res.Body.Close()
 
-	// get the datastream from the body of the response
-	data, err := io.ReadAll(res.Body)
-	if err != nil {
-		return fmt.Errorf("ERROR: %w", err)
-	}
-
-	c.Add(url, data)
-
-	// if there aren't any errors, unmarshal the response from data into resp (pokeAPI struct)
-	if err := json.Unmarshal(data, &resp); err != nil {
-		return fmt.Errorf("%w", err)
-	}
-
+	// DISPLAY RESULTS
 	// range over the Results[] in resp (pokeAPI)
 	for _, item := range resp.Results {
 		fmt.Println(item.Name)
 	}
+
+	// UPDATE STATE
 	// now API call is made, we can set the internal struct 'next' & 'previous' fields to match the response stored in PokeAPI
 	la.next = resp.Next
 	la.previous = resp.Previous
@@ -198,61 +166,61 @@ func mapForward(la *locationArea, c *pokecache.Cache) error {
 }
 
 func mapBack(la *locationArea, c *pokecache.Cache) error {
-	url := pokeAPILocations // as above
-
 	// if c.previous is empty - print a message and return
 	if la.previous == "" {
 		fmt.Println("you're on the first page")
 		return nil
 	}
 
-	// genreate struc that will hold the data for the maps
-	var resp pokeAPI
+	url := la.previous // call to PokeAPI has occurred, value will be present in internal struct for next map locations
 
-	if la.previous != "" {
-		url = la.previous // call to PokeAPI has occurred, value will be present in internal struct for next map locations
-	}
-
-	// check cache
-	cacheData, ok := c.Get(url)
-	if ok {
-		if err := json.Unmarshal(cacheData, &resp); err != nil {
-			fmt.Errorf("%w", err)
-		}
-		// range over the Results[] in resp (pokeAPI)
-		for _, item := range resp.Results {
-			fmt.Println(item.Name)
-		}
-
-		la.next = resp.Next
-		la.previous = resp.Previous
-		return nil
-	}
-	// as above
-	res, err := http.Get(url)
+	resp, err := fetchLocationData(url, c)
 	if err != nil {
 		return fmt.Errorf("error accessing PokeAPI URL for Locations list: %w", err)
 	}
-	defer res.Body.Close()
 
-	// as above
-	data, err := io.ReadAll(res.Body)
-	if err != nil {
-		return fmt.Errorf("ERROR: %w", err)
-	}
-
-	c.Add(url, data)
-
-	if err := json.Unmarshal(data, &resp); err != nil {
-		return fmt.Errorf("%w", err)
-	}
-
-	// as above
+	// DISPLAY RESULTS
 	for _, item := range resp.Results {
 		fmt.Println(item.Name)
 	}
+
+	// UPDATE STATE
 	la.previous = resp.Previous
 	la.next = resp.Next
 
 	return nil
+}
+
+// creating a helper function for DRY
+func fetchLocationData(url string, c *pokecache.Cache) (pokeAPI, error) {
+	// generate pokeAPI struct to return
+	var resp pokeAPI
+
+	cacheData, ok := c.Get(url)
+	if ok {
+		if err := json.Unmarshal(cacheData, &resp); err != nil {
+			return pokeAPI{}, fmt.Errorf("%w", err)
+		}
+		return resp, nil
+	}
+	res, err := http.Get(url)
+	if err != nil {
+		return pokeAPI{}, fmt.Errorf("error accessing PokeAPI for location list: %w", err)
+	}
+	defer res.Body.Close()
+
+	// get data from HTTP request
+	data, err := io.ReadAll(res.Body)
+	if err != nil {
+		return pokeAPI{}, fmt.Errorf("ERROR: %w", err)
+	}
+
+	// Add entry to Cache
+	c.Add(url, data)
+
+	// UNMARSHAL HTTP DATA
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return pokeAPI{}, fmt.Errorf("ERROR - JSON Unmarshal Error: %w", err)
+	}
+	return resp, nil
 }
