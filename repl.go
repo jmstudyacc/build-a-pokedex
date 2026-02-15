@@ -14,12 +14,14 @@ import (
 )
 
 // constant created to store the Poke API Locations URL
-const pokeAPILocations = "https://pokeapi.co/api/v2/location-area"
+const pokeAPILocations = "https://pokeapi.co/api/v2/location-area/"
 
 type cliCommand struct {
-	name        string
-	description string
-	callback    func(*locationArea, *pokecache.Cache) error // callback is a function that returns an error
+	name           string
+	description    string
+	simpleCallback func() error
+	navCallback    func(*locationArea, *pokecache.Cache) error
+	argsCallback   func([]string, *pokecache.Cache) error
 }
 
 // Struct created to STORE data FROM the PokeAPI
@@ -39,6 +41,19 @@ type locationArea struct {
 	previous string
 }
 
+type pokemonEncounter struct {
+	Encounter []encounter `json:"pokemon_encounters"`
+}
+
+type encounter struct {
+	Pokemon pokemon `json:"pokemon"`
+}
+
+type pokemon struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}
+
 // Hashmap to store the commands
 var commandMap map[string]cliCommand
 
@@ -46,21 +61,25 @@ var commandMap map[string]cliCommand
 func init() {
 	commandMap = map[string]cliCommand{ // map with keys that are strings, and values that are cliCommand structs
 		"help": {
-			name:        "help",
-			description: "Displays a help message",
-			callback:    commandHelp,
+			name:           "help",
+			description:    "Displays a help message",
+			simpleCallback: commandHelp,
 		}, "exit": {
-			name:        "exit",
-			description: "Exit the Pokedex",
-			callback:    commandExit,
+			name:           "exit",
+			description:    "Exit the Pokedex",
+			simpleCallback: commandExit,
 		}, "map": {
 			name:        "map",
 			description: "Displays the next 20 locations",
-			callback:    mapForward,
+			navCallback: mapForward,
 		}, "mapb": {
 			name:        "mapb",
 			description: "Displays the previous 20 locations",
-			callback:    mapBack,
+			navCallback: mapBack,
+		}, "explore": {
+			name:         "explore",
+			description:  "Displays the Pokemon encounters in that area",
+			argsCallback: explore,
 		},
 	}
 }
@@ -91,15 +110,22 @@ func startRepl() {
 		command, exist := commandMap[userInput[0]]
 		// if the user input is a command word and exists in the map
 		if exist {
-			// storing the return from command.callback()
-			err := command.callback(la, cache)
-			// if command.callback() does not return nil an error has occurred
+			var err error
+
+			// Check which callback type is set and call it
+			if command.simpleCallback != nil {
+				err = command.simpleCallback()
+			} else if command.navCallback != nil {
+				err = command.navCallback(la, cache)
+			} else if command.argsCallback != nil {
+				// userInput[0] is the command name, so userInput[1:] are the arguments
+				err = command.argsCallback(userInput[1:], cache)
+			}
+
 			if err != nil {
-				fmt.Println("Unknown Command")
+				fmt.Println("Error:", err)
 			}
 		}
-		// print the first position word in the string slice
-		// fmt.Printf("Your command was: %v\n", userInput[0])
 	}
 }
 
@@ -116,7 +142,7 @@ func cleanInput(text string) []string {
 }
 
 // function to exit out of the pokedex
-func commandExit(la *locationArea, c *pokecache.Cache) error {
+func commandExit() error {
 	fmt.Println("Closing the Pokedex... Goodbye!")
 	// send a successful exit code back to the function
 	os.Exit(0)
@@ -124,7 +150,7 @@ func commandExit(la *locationArea, c *pokecache.Cache) error {
 }
 
 // function to display the available commands - error return value
-func commandHelp(la *locationArea, c *pokecache.Cache) error {
+func commandHelp() error {
 	fmt.Println("Welcome to the Pokedex!")
 	fmt.Println("Usage:")
 	fmt.Println()
@@ -223,4 +249,54 @@ func fetchLocationData(url string, c *pokecache.Cache) (pokeAPI, error) {
 		return pokeAPI{}, fmt.Errorf("ERROR - JSON Unmarshal Error: %w", err)
 	}
 	return resp, nil
+}
+
+func fetchData(url string, c *pokecache.Cache) ([]byte, error) {
+	// CHECK Cache
+	cacheData, ok := c.Get(url)
+	if ok {
+		return cacheData, nil
+	}
+	response, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("ERROR: %w", err)
+	}
+	defer response.Body.Close()
+
+	// GET DATA FROM Body
+	data, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("ERROR: %w", err)
+	}
+	// ADD TO CACHE
+	c.Add(url, data)
+
+	// RETURN DATA
+	return data, nil
+}
+
+func explore(args []string, c *pokecache.Cache) error {
+	var encounters pokemonEncounter
+
+	if len(args) == 0 {
+		return fmt.Errorf("explore requires a location area name")
+	}
+	url := pokeAPILocations + args[0]
+	data, err := fetchData(url, c)
+	if err != nil {
+		return fmt.Errorf("ERROR: %w", err)
+	}
+
+	// UNMARSHAL THE DATA INTO POKEMON ENCOUNTER TOP LEVEL STRUCT
+	if err := json.Unmarshal(data, &encounters); err != nil {
+		return fmt.Errorf("ERROR: %w", err)
+	}
+
+	fmt.Printf("Exploring %s...\n", args[0])
+	fmt.Println("Found Pokemon:")
+	// DISPLAY RESULTING POKEMON ENCOUNTERS
+	for _, e := range encounters.Encounter {
+		fmt.Printf("- %s\n", e.Pokemon.Name)
+	}
+	return nil
 }
