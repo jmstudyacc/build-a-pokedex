@@ -38,3 +38,12 @@ func inspect(args []string, c *pokecache.Cache, p pokedex) error {
 	fmt.Println()
 	return nil
 }
+
+func pokedexPrint(p pokedex) error {
+	fmt.Println("Your Pokedex:")
+	for _, entry := range p {
+		fmt.Printf("  -%s\n", entry.Name)
+	}
+
+	return nil
+}

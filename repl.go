@@ -14,12 +14,13 @@ import (
 const pokeAPILocations = "https://pokeapi.co/api/v2/location-area/"
 
 type cliCommand struct {
-	name            string
-	description     string
-	simpleCallback  func() error
-	navCallback     func(*locationArea, *pokecache.Cache) error
-	argsCallback    func([]string, *pokecache.Cache) error
-	pokedexCallback func([]string, *pokecache.Cache, pokedex) error
+	name                 string
+	description          string
+	simpleCallback       func() error
+	navCallback          func(*locationArea, *pokecache.Cache) error
+	argsCallback         func([]string, *pokecache.Cache) error
+	pokedexOnlyCallback  func(pokedex) error
+	pokedexCacheCallback func([]string, *pokecache.Cache, pokedex) error
 }
 
 // Hashmap to store the commands
@@ -49,13 +50,17 @@ func init() {
 			description:  "Displays the Pokemon encounters in that area",
 			argsCallback: explore,
 		}, "catch": {
-			name:            "catch",
-			description:     "Catch the target Pokemon",
-			pokedexCallback: catch,
+			name:                 "catch",
+			description:          "Catch the target Pokemon",
+			pokedexCacheCallback: catch,
 		}, "inspect": {
-			name:            "inspect",
-			description:     "Displays information of the target Pokemon",
-			pokedexCallback: inspect,
+			name:                 "inspect",
+			description:          "Displays information of the target Pokemon",
+			pokedexCacheCallback: inspect,
+		}, "pokedex": {
+			name:                "pokedex",
+			description:         "Displays list of caught pokemon",
+			pokedexOnlyCallback: pokedexPrint,
 		},
 	}
 }
@@ -99,8 +104,10 @@ func startRepl() {
 			} else if command.argsCallback != nil {
 				// userInput[0] is the command name, so userInput[1:] are the arguments
 				err = command.argsCallback(userInput[1:], cache)
-			} else if command.pokedexCallback != nil {
-				err = command.pokedexCallback(userInput[1:], cache, pokedexMap)
+			} else if command.pokedexCacheCallback != nil {
+				err = command.pokedexCacheCallback(userInput[1:], cache, pokedexMap)
+			} else if command.pokedexOnlyCallback != nil {
+				err = command.pokedexOnlyCallback(pokedexMap)
 			}
 
 			if err != nil {
