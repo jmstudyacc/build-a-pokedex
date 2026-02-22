@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 
@@ -22,6 +23,10 @@ func catch(args []string, c *pokecache.Cache, p pokedex) error {
 	pokemonEndpointURL := "https://pokeapi.co/api/v2/pokemon/" + targetPokemon
 
 	data, err := fetchData(pokemonEndpointURL, c)
+	if errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("%s does not exist", targetPokemon)
+	}
+
 	if err != nil {
 		return fmt.Errorf("%w", err)
 	}

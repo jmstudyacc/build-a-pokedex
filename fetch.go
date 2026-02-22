@@ -9,6 +9,8 @@ import (
 	"pokedexcli/internal/pokecache"
 )
 
+var ErrNotFound = fmt.Errorf("resource not found")
+
 // creating a helper function for DRY
 func fetchLocationData(url string, c *pokecache.Cache) (pokeAPI, error) {
 	// generate pokeAPI struct to return
@@ -54,6 +56,10 @@ func fetchData(url string, c *pokecache.Cache) ([]byte, error) {
 		return nil, fmt.Errorf("ERROR: %w", err)
 	}
 	defer response.Body.Close()
+
+	if response.StatusCode == 404 {
+		return nil, ErrNotFound
+	}
 
 	// GET DATA FROM Body
 	data, err := io.ReadAll(response.Body)
