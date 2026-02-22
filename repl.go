@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"strings"
@@ -22,6 +23,7 @@ type cliCommand struct {
 	simpleCallback func() error
 	navCallback    func(*locationArea, *pokecache.Cache) error
 	argsCallback   func([]string, *pokecache.Cache) error
+	catchCallback  func([]string, *pokecache.Cache, pokedex) error
 }
 
 // Struct created to STORE data FROM the PokeAPI
@@ -54,6 +56,17 @@ type pokemon struct {
 	URL  string `json:"url"`
 }
 
+type pokeInfo struct {
+	ID             int    `json:"id"`
+	Name           string `json:"name"`
+	BaseExperience int    `json:"base_experience"`
+	Height         int    `json:"height"`
+	Weight         int    `json:"weight"`
+	// seen & caught will be needed
+}
+
+type pokedex map[string]pokeInfo
+
 // Hashmap to store the commands
 var commandMap map[string]cliCommand
 
@@ -80,6 +93,10 @@ func init() {
 			name:         "explore",
 			description:  "Displays the Pokemon encounters in that area",
 			argsCallback: explore,
+		}, "catch": {
+			name:          "catch",
+			description:   "Catch the target Pokemon",
+			catchCallback: catch,
 		},
 	}
 }
@@ -90,6 +107,9 @@ func startRepl() {
 
 	// instantiate the cache
 	cache := pokecache.NewCache(5 * time.Minute)
+
+	// create pokedex
+	pokedexMap := pokedex{}
 
 	// create a scanner to read from os.Stdin
 	scanner := bufio.NewScanner(os.Stdin) // calling this will block & wait for user input and CR
@@ -120,6 +140,8 @@ func startRepl() {
 			} else if command.argsCallback != nil {
 				// userInput[0] is the command name, so userInput[1:] are the arguments
 				err = command.argsCallback(userInput[1:], cache)
+			} else if command.catchCallback != nil {
+				err = command.catchCallback(userInput[1:], cache, pokedexMap)
 			}
 
 			if err != nil {
@@ -298,5 +320,42 @@ func explore(args []string, c *pokecache.Cache) error {
 	for _, e := range encounters.Encounter {
 		fmt.Printf("- %s\n", e.Pokemon.Name)
 	}
+	return nil
+}
+
+// Catching pokemon
+func catch(args []string, c *pokecache.Cache, p pokedex) error {
+	var pokemon pokeInfo
+	catchChance := rand.IntN(362)
+	targetPokemon := args[0]
+	pokemonEndpointURL := "https://pokeapi.co/api/v2/pokemon/" + targetPokemon
+
+	data, err := fetchData(pokemonEndpointURL, c)
+	if err != nil {
+		return fmt.Errorf("ERROR: %w", err)
+	}
+
+	if err := json.Unmarshal(data, &pokemon); err != nil {
+		return fmt.Errorf("ERROR: %w", err)
+	}
+
+	fmt.Printf("Throwing a Pokeball at %s...\n", targetPokemon)
+
+	// determine if pokemon can be caught
+	// if experience is high, pokemon is harder to catch
+	//	cc, b := c.Get(pokemon)
+	// fmt.Println(catchChance)
+	// fmt.Printf("DEBUG: Pokemon base experience: %d\n", pokemon.BaseExperience)
+
+	if catchChance >= pokemon.BaseExperience {
+		fmt.Printf("%s was caught!\n", targetPokemon)
+
+		// adding caught pokemon to pokedex
+		p[targetPokemon] = pokemon
+		return nil
+	}
+
+	fmt.Printf("%s escaped!\n", targetPokemon)
+
 	return nil
 }
